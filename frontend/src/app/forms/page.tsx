@@ -157,7 +157,7 @@ export default function FormsPage() {
                     <ul className="space-y-2 text-sm text-muted-foreground">
                       <li className="flex items-start space-x-2">
                         <BarChart3 className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                        <span>Tasa de finalización objetivo: >85%</span>
+                        <span>Tasa de finalización objetivo: &gt;85%</span>
                       </li>
                       <li className="flex items-start space-x-2">
                         <Clock className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
