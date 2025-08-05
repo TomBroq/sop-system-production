@@ -1,0 +1,12 @@
+{
+  "avgLoadTime": 534,
+  "measurements": 1,
+  "lastMeasurement": {
+    "url": "https://frontend-7r5b7rnky-tom-broqs-projects.vercel.app",
+    "loadTime": 534,
+    "timestamp": "2025-08-05T19:13:39.667Z",
+    "statusCode": 401,
+    "contentLength": 13374
+  },
+  "performance": "good"
+}

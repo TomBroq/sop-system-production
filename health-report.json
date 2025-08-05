@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-08-05T19:13:39.671Z",
+  "status": {
+    "frontend": {
+      "healthy": false,
+      "lastCheck": "2025-08-05T19:13:39.131Z",
+      "responseTime": 542,
+      "statusCode": 401
+    },
+    "backend": {
+      "healthy": false,
+      "lastCheck": null,
+      "responseTime": null
+    },
+    "database": {
+      "healthy": false,
+      "lastCheck": "2025-08-05T19:13:39.052Z",
+      "responseTime": 385,
+      "statusCode": 401
+    }
+  },
+  "alerts": [
+    {
+      "id": 1754421219132,
+      "service": "frontend",
+      "issue": "Service unavailable",
+      "timestamp": "2025-08-05T19:13:39.132Z",
+      "severity": "low"
+    },
+    {
+      "id": 1754421219133,
+      "service": "database",
+      "issue": "Service unavailable",
+      "timestamp": "2025-08-05T19:13:39.133Z",
+      "severity": "high"
+    }
+  ],
+  "summary": {
+    "totalServices": 3,
+    "healthyServices": 0,
+    "avgResponseTime": 464,
+    "uptime": 0
+  }
+}
