@@ -1,22 +1,15 @@
 {
   "version": 2,
-  "name": "sop-system-frontend",
   "framework": "nextjs",
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/.next",
   "installCommand": "cd frontend && npm install",
   "devCommand": "cd frontend && npm run dev",
   "functions": {
-    "frontend/src/app/api/**/*.js": {
+    "frontend/src/app/api/**/*.ts": {
       "runtime": "nodejs18.x"
     }
   },
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/frontend/$1"
-    }
-  ],
   "env": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://knsxnlvudypucdwbyyfm.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtuc3hubHZ1ZHlwdWNkd2J5eWZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzM0NjAzMTAsImV4cCI6MjA0OTAzNjMxMH0.0p4R0P4fRHqUwuGU1O5rlQhU5H1v8t1T3_3m7fX8Vmo"
