@@ -1,0 +1,564 @@
+// Sistema de Levantamiento Automatizado de Procesos - Prisma Schema
+// Optimizado para 68 reglas de negocio del PRD
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==============================================
+// ENUMS - Estados y Tipos del Sistema
+// ==============================================
+
+enum UserRole {
+  admin
+  senior_consultant
+  consultant
+  client
+}
+
+enum CompanySize {
+  micro
+  small
+  medium
+  large
+}
+
+enum ClientStatus {
+  created
+  form_sent
+  responses_received
+  processing_ai
+  sops_generated
+  proposal_ready
+  proposal_sent
+  closed
+}
+
+enum FormStatus {
+  created
+  sent
+  in_progress
+  completed
+  expired
+}
+
+enum ProcessCategory {
+  primary
+  support
+  management
+}
+
+enum ComplexityLevel {
+  low
+  medium
+  high
+}
+
+enum AIJobStatus {
+  queued
+  processing
+  completed
+  failed
+  retrying
+}
+
+enum ProposalStatus {
+  draft
+  ready
+  sent
+  accepted
+  rejected
+}
+
+enum NotificationType {
+  form_sent
+  form_reminder
+  form_completed
+  processing_started
+  sops_ready
+  proposal_ready
+  error_alert
+  system_alert
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+  bounced
+}
+
+enum NotificationPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+// ==============================================
+// USUARIOS Y AUTENTICACIÓN
+// ==============================================
+
+model User {
+  id                 String    @id @default(uuid()) @db.Uuid
+  email              String    @unique
+  name               String
+  role               UserRole
+  passwordHash       String?   @map("password_hash")
+  emailVerified      Boolean   @default(false) @map("email_verified")
+  twoFactorEnabled   Boolean   @default(false) @map("two_factor_enabled")
+  avatarUrl          String?   @map("avatar_url")
+  timezone           String    @default("America/Santiago")
+  language           String    @default("es")
+  isActive           Boolean   @default(true) @map("is_active")
+  lastLoginAt        DateTime? @map("last_login_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  clientsCreated     Client[]           @relation("ClientCreatedBy")
+  approvedSOPs       GeneratedSOP[]     @relation("SOPApprovedBy")
+  workflowTransitions WorkflowTransition[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+// ==============================================
+// INDUSTRIAS Y BASE DE CONOCIMIENTO
+// ==============================================
+
+model Industry {
+  id                           String  @id @default(uuid()) @db.Uuid
+  code                         String  @unique
+  name                         String
+  displayNameEs                String  @map("display_name_es")
+  isRegulated                  Boolean @default(false) @map("is_regulated")
+  additionalComplianceQuestions Int     @default(0) @map("additional_compliance_questions")
+  
+  // JSON fields para datos flexibles
+  typicalProcesses             Json    @default("[]") @map("typical_processes") @db.JsonB
+  commonPainPoints             Json    @default("[]") @map("common_pain_points") @db.JsonB
+  automationBenchmarks         Json    @default("{}") @map("automation_benchmarks") @db.JsonB
+  
+  version                      Int     @default(1)
+  isActive                     Boolean @default(true) @map("is_active")
+  createdAt                    DateTime @default(now()) @map("created_at")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  clients                      Client[]
+  questionTemplates            QuestionTemplate[]
+  generatedForms              GeneratedForm[]
+
+  @@map("industries")
+}
+
+model QuestionTemplate {
+  id                       String      @id @default(uuid()) @db.Uuid
+  industryId               String      @map("industry_id") @db.Uuid
+  companySize              CompanySize @map("company_size")
+  questions                Json        @db.JsonB
+  questionCount            Int         @map("question_count")
+  estimatedCompletionTime  Int         @map("estimated_completion_time")
+  priorityOrder            Int         @default(1) @map("priority_order")
+  complianceQuestions      Json        @default("[]") @map("compliance_questions") @db.JsonB
+  version                  Int         @default(1)
+  isActive                 Boolean     @default(true) @map("is_active")
+  createdAt                DateTime    @default(now()) @map("created_at")
+  updatedAt                DateTime    @updatedAt @map("updated_at")
+
+  // Relaciones
+  industry                 Industry    @relation(fields: [industryId], references: [id])
+  generatedForms          GeneratedForm[]
+
+  @@unique([industryId, companySize, version])
+  @@map("question_templates")
+}
+
+// ==============================================
+// GESTIÓN DE CLIENTES
+// ==============================================
+
+model Client {
+  id                        String      @id @default(uuid()) @db.Uuid
+  name                      String
+  industryId                String      @map("industry_id") @db.Uuid
+  subindustry               String?
+  companySize               CompanySize @map("company_size")
+  yearsOperation            Int?        @map("years_operation")
+  employeeCount             Int?        @map("employee_count")
+  annualRevenue             Decimal?    @map("annual_revenue") @db.Decimal(12, 2)
+  contactEmail              String      @map("contact_email")
+  
+  // Clasificación automática IA (RN2 de RF001)
+  classificationConfidence  Decimal?    @map("classification_confidence") @db.Decimal(3, 2)
+  classificationTimestamp   DateTime?   @map("classification_timestamp")
+  classificationMetadata    Json        @default("{}") @map("classification_metadata") @db.JsonB
+  
+  // Estado del workflow
+  currentStatus             ClientStatus @default(created) @map("current_status")
+  
+  createdAt                 DateTime    @default(now()) @map("created_at")
+  updatedAt                 DateTime    @updatedAt @map("updated_at")
+  createdBy                 String?     @map("created_by") @db.Uuid
+
+  // Relaciones
+  industry                  Industry    @relation(fields: [industryId], references: [id])
+  creator                   User?       @relation("ClientCreatedBy", fields: [createdBy], references: [id])
+  generatedForms           GeneratedForm[]
+  formResponses            FormResponse[]
+  aiProcessingJobs         AIProcessingJob[]
+  identifiedProcesses      IdentifiedProcess[]
+  generatedSOPs            GeneratedSOP[]
+  automationAnalysis       AutomationAnalysis[]
+  commercialProposals      CommercialProposal[]
+  notifications            Notification[]
+  workflowTransitions      WorkflowTransition[]
+  dataProcessingRecords    DataProcessingRecord[]
+
+  @@map("clients")
+}
+
+// ==============================================
+// GESTIÓN DE FORMULARIOS
+// ==============================================
+
+model GeneratedForm {
+  id                    String      @id @default(uuid()) @db.Uuid
+  clientId              String      @map("client_id") @db.Uuid
+  tallyFormId           String      @unique @map("tally_form_id")
+  tallyFormUrl          String      @map("tally_form_url")
+  tallyWebhookUrl       String?     @map("tally_webhook_url")
+  industryId            String?     @map("industry_id") @db.Uuid
+  companySize           CompanySize? @map("company_size")
+  questionTemplateId    String?     @map("question_template_id") @db.Uuid
+  totalQuestions        Int         @map("total_questions")
+  status                FormStatus  @default(created)
+  sentAt                DateTime?   @map("sent_at")
+  startedAt             DateTime?   @map("started_at")
+  completedAt           DateTime?   @map("completed_at")
+  expiresAt             DateTime?   @map("expires_at")
+  currentQuestion       Int         @default(0) @map("current_question")
+  completionPercentage  Decimal     @default(0.00) @map("completion_percentage") @db.Decimal(5, 2)
+  partialResponses      Json        @default("{}") @map("partial_responses") @db.JsonB
+  lastSavedAt           DateTime?   @map("last_saved_at")
+  createdAt             DateTime    @default(now()) @map("created_at")
+
+  // Relaciones
+  client                Client      @relation(fields: [clientId], references: [id])
+  industry              Industry?   @relation(fields: [industryId], references: [id])
+  questionTemplate      QuestionTemplate? @relation(fields: [questionTemplateId], references: [id])
+  formResponse          FormResponse?
+
+  @@map("generated_forms")
+}
+
+model FormResponse {
+  id                   String    @id @default(uuid()) @db.Uuid
+  formId               String    @unique @map("form_id") @db.Uuid
+  clientId             String    @map("client_id") @db.Uuid
+  rawResponses         Json      @map("raw_responses") @db.JsonB
+  processedResponses   Json      @map("processed_responses") @db.JsonB
+  completionTimeMinutes Int?     @map("completion_time_minutes")
+  submittedAt          DateTime  @map("submitted_at")
+  ipAddress            String?   @map("ip_address") @db.Inet
+  userAgent            String?   @map("user_agent")
+  validationScore      Decimal?  @map("validation_score") @db.Decimal(3, 2)
+  validationIssues     Json      @default("[]") @map("validation_issues") @db.JsonB
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  // Relaciones
+  form                 GeneratedForm @relation(fields: [formId], references: [id])
+  client               Client        @relation(fields: [clientId], references: [id])
+  aiProcessingJobs     AIProcessingJob[]
+
+  @@map("form_responses")
+}
+
+// ==============================================
+// PROCESAMIENTO IA
+// ==============================================
+
+model AIProcessingJob {
+  id                      String       @id @default(uuid()) @db.Uuid
+  clientId                String       @map("client_id") @db.Uuid
+  formResponseId          String       @map("form_response_id") @db.Uuid
+  status                  AIJobStatus  @default(queued)
+  multiagentSystemConfig  Json         @default("{}") @map("multiagent_system_config") @db.JsonB
+  industryContext         Json         @default("{}") @map("industry_context") @db.JsonB
+  startedAt               DateTime?    @map("started_at")
+  completedAt             DateTime?    @map("completed_at")
+  processingTimeSeconds   Int?         @map("processing_time_seconds")
+  identifiedProcesses     Json         @default("[]") @map("identified_processes") @db.JsonB
+  processCount            Int          @default(0) @map("process_count")
+  confidenceScores        Json         @default("{}") @map("confidence_scores") @db.JsonB
+  retryCount              Int          @default(0) @map("retry_count")
+  maxRetries              Int          @default(3) @map("max_retries")
+  errorMessage            String?      @map("error_message")
+  errorDetails            Json         @default("{}") @map("error_details") @db.JsonB
+  createdAt               DateTime     @default(now()) @map("created_at")
+
+  // Relaciones
+  client                  Client       @relation(fields: [clientId], references: [id])
+  formResponse            FormResponse @relation(fields: [formResponseId], references: [id])
+  processes               IdentifiedProcess[]
+
+  @@map("ai_processing_jobs")
+}
+
+// ==============================================
+// PROCESOS Y SOPS
+// ==============================================
+
+model IdentifiedProcess {
+  id                        String            @id @default(uuid()) @db.Uuid
+  clientId                  String            @map("client_id") @db.Uuid
+  aiJobId                   String            @map("ai_job_id") @db.Uuid
+  processName               String            @map("process_name")
+  processCategory           ProcessCategory   @map("process_category")
+  processDescription        String?           @map("process_description")
+  isExplicit                Boolean           @default(true) @map("is_explicit")
+  frequencyPerMonth         Int               @default(0) @map("frequency_per_month")
+  manualStepsCount          Int               @default(0) @map("manual_steps_count")
+  errorRatePercentage       Decimal           @default(0.00) @map("error_rate_percentage") @db.Decimal(5, 2)
+  automationFeasibilityScore Decimal          @default(0.00) @map("automation_feasibility_score") @db.Decimal(3, 2)
+  estimatedRoiPercentage    Int               @default(0) @map("estimated_roi_percentage")
+  implementationComplexity  ComplexityLevel   @default(medium) @map("implementation_complexity")
+  systemsInvolved           Json              @default("[]") @map("systems_involved") @db.JsonB
+  integrationComplexity     ComplexityLevel   @default(medium) @map("integration_complexity")
+  processMetadata           Json              @default("{}") @map("process_metadata") @db.JsonB
+  createdAt                 DateTime          @default(now()) @map("created_at")
+
+  // Relaciones
+  client                    Client            @relation(fields: [clientId], references: [id])
+  aiJob                     AIProcessingJob   @relation(fields: [aiJobId], references: [id])
+  generatedSOPs             GeneratedSOP[]
+
+  @@map("identified_processes")
+}
+
+model GeneratedSOP {
+  id                        String          @id @default(uuid()) @db.Uuid
+  processId                 String          @map("process_id") @db.Uuid
+  clientId                  String          @map("client_id") @db.Uuid
+  objective                 String
+  responsibleRoles          Json            @default("[]") @map("responsible_roles") @db.JsonB
+  inputs                    Json            @default("[]") @db.JsonB
+  steps                     Json            @default("[]") @db.JsonB
+  outputs                   Json            @default("[]") @db.JsonB
+  estimatedDurationMinutes  Int             @default(0) @map("estimated_duration_minutes")
+  complexityLevel           ComplexityLevel @default(medium) @map("complexity_level")
+  complianceRequirements    Json            @default("[]") @map("compliance_requirements") @db.JsonB
+  version                   Int             @default(1)
+  isApproved                Boolean         @default(false) @map("is_approved")
+  approvedAt                DateTime?       @map("approved_at")
+  approvedBy                String?         @map("approved_by") @db.Uuid
+  notes                     String?
+  createdAt                 DateTime        @default(now()) @map("created_at")
+  updatedAt                 DateTime        @updatedAt @map("updated_at")
+
+  // Relaciones
+  process                   IdentifiedProcess @relation(fields: [processId], references: [id])
+  client                    Client            @relation(fields: [clientId], references: [id])
+  approver                  User?             @relation("SOPApprovedBy", fields: [approvedBy], references: [id])
+
+  @@map("generated_sops")
+}
+
+// ==============================================
+// ANÁLISIS Y PROPUESTAS
+// ==============================================
+
+model AutomationAnalysis {
+  id                          String   @id @default(uuid()) @db.Uuid
+  clientId                    String   @map("client_id") @db.Uuid
+  quickWins                   Json     @default("[]") @map("quick_wins") @db.JsonB
+  mediumTerm                  Json     @default("[]") @map("medium_term") @db.JsonB
+  complexProjects             Json     @default("[]") @map("complex_projects") @db.JsonB
+  totalProcessesAnalyzed      Int      @default(0) @map("total_processes_analyzed")
+  highPriorityCount           Int      @default(0) @map("high_priority_count")
+  estimatedTotalRoiPercentage Int      @default(0) @map("estimated_total_roi_percentage")
+  totalImplementationCostUsd  Decimal  @default(0.00) @map("total_implementation_cost_usd") @db.Decimal(10, 2)
+  highVolumeProcesses         Json     @default("[]") @map("high_volume_processes") @db.JsonB
+  highErrorProcesses          Json     @default("[]") @map("high_error_processes") @db.JsonB
+  complexIntegrationProcesses Json     @default("[]") @map("complex_integration_processes") @db.JsonB
+  complianceCriticalProcesses Json     @default("[]") @map("compliance_critical_processes") @db.JsonB
+  analysisMetadata            Json     @default("{}") @map("analysis_metadata") @db.JsonB
+  createdAt                   DateTime @default(now()) @map("created_at")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  client                      Client   @relation(fields: [clientId], references: [id])
+  commercialProposals         CommercialProposal[]
+
+  @@map("automation_analysis")
+}
+
+model CommercialProposal {
+  id                      String              @id @default(uuid()) @db.Uuid
+  clientId                String              @map("client_id") @db.Uuid
+  automationAnalysisId    String              @map("automation_analysis_id") @db.Uuid
+  executiveSummary        String?             @map("executive_summary")
+  identifiedOpportunities Json                @default("[]") @map("identified_opportunities") @db.JsonB
+  implementationRoadmap   Json                @default("[]") @map("implementation_roadmap") @db.JsonB
+  investmentBreakdown     Json                @default("{}") @map("investment_breakdown") @db.JsonB
+  expectedRoi             Json                @default("{}") @map("expected_roi") @db.JsonB
+  pdfFilePath             String?             @map("pdf_file_path")
+  pdfGeneratedAt          DateTime?           @map("pdf_generated_at")
+  pdfFileSizeBytes        Int?                @map("pdf_file_size_bytes")
+  status                  ProposalStatus      @default(draft)
+  sentAt                  DateTime?           @map("sent_at")
+  clientFeedback          String?             @map("client_feedback")
+  openedAt                DateTime?           @map("opened_at")
+  downloadCount           Int                 @default(0) @map("download_count")
+  version                 Int                 @default(1)
+  createdAt               DateTime            @default(now()) @map("created_at")
+  updatedAt               DateTime            @updatedAt @map("updated_at")
+
+  // Relaciones
+  client                  Client              @relation(fields: [clientId], references: [id])
+  automationAnalysis      AutomationAnalysis  @relation(fields: [automationAnalysisId], references: [id])
+
+  @@map("commercial_proposals")
+}
+
+// ==============================================
+// NOTIFICACIONES Y WORKFLOW
+// ==============================================
+
+model Notification {
+  id                String               @id @default(uuid()) @db.Uuid
+  clientId          String?              @map("client_id") @db.Uuid
+  userId            String?              @map("user_id") @db.Uuid
+  notificationType  NotificationType     @map("notification_type")
+  recipientEmail    String               @map("recipient_email")
+  subject           String
+  message           String
+  templateUsed      String?              @map("template_used")
+  status            NotificationStatus   @default(pending)
+  sentAt            DateTime?            @map("sent_at")
+  deliveryResponse  Json                 @default("{}") @map("delivery_response") @db.JsonB
+  isAutomated       Boolean              @default(true) @map("is_automated")
+  priority          NotificationPriority @default(normal)
+  retryCount        Int                  @default(0) @map("retry_count")
+  maxRetries        Int                  @default(3) @map("max_retries")
+  createdAt         DateTime             @default(now()) @map("created_at")
+
+  // Relaciones
+  client            Client?              @relation(fields: [clientId], references: [id])
+  user              User?                @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model WorkflowTransition {
+  id                String    @id @default(uuid()) @db.Uuid
+  clientId          String    @map("client_id") @db.Uuid
+  fromStatus        String?   @map("from_status")
+  toStatus          String    @map("to_status")
+  triggerEvent      String    @map("trigger_event")
+  triggeredBy       String?   @map("triggered_by") @db.Uuid
+  additionalData    Json      @default("{}") @map("additional_data") @db.JsonB
+  processingTimeMs  Int?      @map("processing_time_ms")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  // Relaciones
+  client            Client    @relation(fields: [clientId], references: [id])
+  user              User?     @relation(fields: [triggeredBy], references: [id])
+
+  @@map("workflow_transitions")
+}
+
+// ==============================================
+// MÉTRICAS Y MONITOREO
+// ==============================================
+
+enum MetricType {
+  form_generation_time
+  ai_processing_time
+  sop_generation_time
+  pdf_generation_time
+  api_response_time
+  database_query_time
+  webhook_processing_time
+}
+
+model SystemMetric {
+  id                  String     @id @default(uuid()) @db.Uuid
+  metricType          MetricType @map("metric_type")
+  valueMs             Int        @map("value_ms")
+  clientId            String?    @map("client_id") @db.Uuid
+  additionalContext   Json       @default("{}") @map("additional_context") @db.JsonB
+  environment         String     @default("production")
+  createdAt           DateTime   @default(now()) @map("created_at")
+
+  // Relaciones
+  client              Client?    @relation(fields: [clientId], references: [id])
+
+  @@map("system_metrics")
+}
+
+// ==============================================
+// AUDITORÍA Y COMPLIANCE
+// ==============================================
+
+model AuditLog {
+  id                    String    @id @default(uuid()) @db.Uuid
+  action                String
+  entityType            String    @map("entity_type")
+  entityId              String?   @map("entity_id") @db.Uuid
+  userId                String?   @map("user_id") @db.Uuid
+  ipAddress             String?   @map("ip_address") @db.Inet
+  userAgent             String?   @map("user_agent")
+  details               Json      @default("{}") @db.JsonB
+  sensitiveDataAccessed Boolean   @default(false) @map("sensitive_data_accessed")
+  requestId             String?   @map("request_id")
+  sessionId             String?   @map("session_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  // Relaciones
+  user                  User?     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model DataProcessingRecord {
+  id                      String    @id @default(uuid()) @db.Uuid
+  clientId                String    @map("client_id") @db.Uuid
+  consentGiven            Boolean   @map("consent_given")
+  consentDate             DateTime  @map("consent_date")
+  consentType             String    @map("consent_type")
+  consentText             String?   @map("consent_text")
+  processingPurpose       String    @map("processing_purpose")
+  legalBasis              String    @map("legal_basis")
+  retentionPeriodMonths   Int       @default(24) @map("retention_period_months")
+  scheduledDeletionDate   DateTime? @map("scheduled_deletion_date") @db.Date
+  isActive                Boolean   @default(true) @map("is_active")
+  withdrawnAt             DateTime? @map("withdrawn_at")
+  withdrawalReason        String?   @map("withdrawal_reason")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  client                  Client    @relation(fields: [clientId], references: [id])
+
+  @@map("data_processing_records")
+}
+
+// ==============================================
+// EXTENSIONES PARA EL CLIENTE GENERADO
+// ==============================================
+
+// Crear relación entre SystemMetric y Client
+model Client {
+  // ... otros campos ...
+  systemMetrics SystemMetric[]
+}
