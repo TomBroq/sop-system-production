@@ -64,7 +64,8 @@ export default function DashboardPage() {
         type: 'success',
         title: 'Nuevo Formulario Completado',
         message: 'El cliente "Innovación Tech S.A." ha completado su formulario de diagnóstico',
-        action_url: '/clients/demo-client-id'
+        action_url: '/clients/demo-client-id',
+        read: false
       })
     }, 3000)
 
