@@ -12,7 +12,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 1000 * 60 * 5, // 5 minutes
-            cacheTime: 1000 * 60 * 10, // 10 minutes
+            gcTime: 1000 * 60 * 10, // 10 minutes (renamed from cacheTime)
             retry: (failureCount, error: any) => {
               // Don't retry on 4xx errors
               if (error?.response?.status >= 400 && error?.response?.status < 500) {
