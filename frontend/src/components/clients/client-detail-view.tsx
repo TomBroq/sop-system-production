@@ -13,6 +13,7 @@ import {
   Calendar,
   Briefcase,
   FileText,
+  Plus,
   Send,
   TrendingUp,
   Clock,
